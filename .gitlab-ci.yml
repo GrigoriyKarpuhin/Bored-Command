@@ -1,0 +1,7 @@
+noop-job:
+  script:
+    - echo ok
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+    - when: always
