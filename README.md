@@ -61,7 +61,7 @@
 Примеры использования стеков, которые вы можете использовать в проектах. Размер ваших проектов может отличаться от представленных.
 
 1. [Shopping Cart](https://github.com/gvolpe/pfps-shopping-cart)
-2.[ZIO CRUD sample](https://github.com/adrianfilip/zio-crud-sample)
+2. [ZIO CRUD sample](https://github.com/adrianfilip/zio-crud-sample)
 3. [ZIO Pet Clinic](https://github.com/zio/zio-petclinic)
 4. [Typelevel Pet Store](https://github.com/pauljamescleary/scala-pet-store)
 5. [Хороший пример Telegram-бота (написан на Scala 3, но по сути каких-то новых фич языка не использует, так что актуален и для Scala 2)](https://github.com/VladKopanev/CITelegramBot)
