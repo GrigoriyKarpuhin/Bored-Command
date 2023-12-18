@@ -1,6 +1,6 @@
 # Bored Command
 
-Bored Command is a command-line application that aims to provide users with interesting activities to combat boredom. The project is implemented in Scala, leveraging the Cats Effect library for asynchronous programming and Doobie for database interactions. It also integrates with the Bored API to fetch and suggest activities.
+Bored Command is a cli utility that aims to provide users with interesting activities to combat boredom. The project is implemented in Scala, leveraging the Cats Effect library for asynchronous programming and Doobie for database interactions. It also integrates with the Bored API to fetch and suggest activities.
 
 ## Requirements
 - Java (JDK 8 or higher)
