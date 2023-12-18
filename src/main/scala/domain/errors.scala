@@ -8,9 +8,11 @@ object errors {
     val cause: Option[Throwable] = None
   )
 
-  case class ActivityAlreadyExists() extends AppError("Activity with same name and date already exists")
+  case class ActivityAlreadyExists() extends AppError("Activity with same name and date already in favorites")
 
-  //case class ActivityNotFound(id: ActivityID) extends AppError(s"Activity with id ${id.value} not found")
+  case class ActivityNotFound(id: ActivityID) extends AppError("No activity with this id was found")
+
+  case class NoActivities() extends AppError("No activities in favorites")
 
   case class InternalError(
     cause0: Throwable

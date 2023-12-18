@@ -1,14 +1,12 @@
-//import service.BoredCommandStorage
-//import dbms.BoredCommandSql
+import service.BoredCommandStorage
+import dbms.BoredCommandSql
 import cats.effect.{ExitCode, IO, IOApp, Resource}
 import sttp.client4.Response
 import sttp.client4.quick._
 import sttp.model.Uri
 import domain._
-import domain.errors._
 import doobie._
-import doobie.implicits._
-import config.AppConfig
+import cats.effect.unsafe.implicits.global
 
 class BoredCommand extends IOApp {
 
@@ -22,29 +20,87 @@ class BoredCommand extends IOApp {
     "key" -> "Some key"
   )
 
-  def run(args: List[String]): IO[ExitCode] = {
-    /*(for {
-      config <- Resource.eval(AppConfig.load)
-      transactor = Transactor.fromDriverManager[IO](
-        config.db.url,
-        config.db.driver,
-        config.db.user,
-        config.db.password
-      )
-      sql = BoredCommandSql.make
-      storage = BoredCommandStorage.make(sql, transactor)
-      _ <- Resource.eval(
-        if (args.contains("--help")) help()
-        else makeRequest(storage)
-      )
-    } yield ()).useForever.as(ExitCode.Success)*/
-   program.use(_ => makeRequest()).as(ExitCode.Success)
+  private val transactor = Transactor.fromDriverManager[IO](
+    "org.sqlite.JDBC",
+    "jdbc:sqlite:bored.db",
+    "",
+    ""
+  )
+
+  private def insertActivity(activity: Activity, activityID: ActivityID, boredSql: BoredCommandStorage): IO[Unit] = {
+    transactor.trans.apply(boredSql.create).unsafeRunSync()
+    boredSql.add(activity, activityID).unsafeRunSync() match {
+      case Left(error) =>
+        IO.pure(println(error.message))
+      case Right(_) =>
+        IO.pure(println("Activity saved in favorites"))
+    }
   }
 
-  private def program: Resource[IO, Unit] =
-    Resource.make(IO.unit)(_ => IO.unit)
+  private def listFavorites(boredSql: BoredCommandStorage): IO[Unit] = {
+    transactor.trans.apply(boredSql.create).unsafeRunSync()
+    boredSql.list.unsafeRunSync() match {
+      case Left(error) =>
+        IO.pure(println(error.message))
+      case Right(activities) =>
+        val formattedList = activities.zipWithIndex.map {
+          case (activity, index) => s"${index + 1}. ${activity._1.value} (ID: ${activity._2.value})"
+        }
+        IO.pure(println(formattedList.mkString("\n")))
+    }
+  }
 
-  private def userInput(): IO[Uri] =
+  private def removeActivity(boredSql: BoredCommandStorage, activityID: ActivityID): IO[Unit] = {
+    transactor.trans.apply(boredSql.create).unsafeRunSync()
+    boredSql.removeById(activityID).unsafeRunSync() match {
+      case Left(error) =>
+        IO.pure(println(error.message))
+      case Right(_) =>
+        IO.pure(println("Activity removed from favorites"))
+    }
+  }
+
+  def run(args: List[String]): IO[ExitCode] = {
+    Resource
+      .eval(IO(println("Welcome to Bored Command!")))
+      .use { _ =>
+        for {
+          sql <- IO(BoredCommandSql.make)
+          storage = BoredCommandStorage.make(sql, transactor)
+          _ <- askUser(storage)
+        } yield ()
+      }
+      .as(ExitCode.Success)
+  }
+  def askUser(boredSql: BoredCommandStorage): IO[Unit] = {
+    for {
+      _ <- IO(println("What would you like to do?"))
+      _ <- IO(println("1. Generate new activity"))
+      _ <- IO(println("2. List your favorites"))
+      _ <- IO(println("3. Remove from favorites by ID"))
+      _ <- IO(println("4. Help"))
+      userInput <- readInput("Enter the number corresponding to your choice: ")
+
+      _ <- userInput match {
+        case "1" => makeRequest(boredSql)
+        case "2" => listFavorites(boredSql)
+        case "3" => removeFromFavorites(boredSql)
+        case "4" => help()
+        case _   => IO(println("Invalid choice. Please enter a valid number."))
+      }
+    } yield ()
+  }
+
+  private def removeFromFavorites(boredSql: BoredCommandStorage): IO[Unit] = {
+    for {
+      activityIdStr <- readInput("Enter the ID of the activity to remove from favorites: ")
+      activityId <- IO(activityIdStr)
+      check: Long = activityId.toLongOption.getOrElse(0)
+      _ <- removeActivity(boredSql, ActivityID(check))
+    } yield ()
+  }
+
+  def userInput(): IO[Uri] =
     for {
       key <- readInput("Enter a unique numeric id of activity (if you have one): ")
       result <-
@@ -68,7 +124,7 @@ class BoredCommand extends IOApp {
           )
     } yield result
 
-  private def makeRequest(/*boredSql: BoredCommandStorage*/): IO[Unit] = {
+  private def makeRequest(boredSql: BoredCommandStorage): IO[Unit] = {
     val constructedUrlIO: IO[Uri] = userInput()
 
     val response: IO[Response[Either[String, String]]] =
@@ -90,7 +146,7 @@ class BoredCommand extends IOApp {
             val parsedJson = ujson.read(jsonString)
             if (parsedJson.obj.contains("error")) {
               println(parsedJson("error").str)
-              println("See --help")
+              println("Try to read Help")
             } else {
               println(s"Activity special for you: ${parsedJson("activity").str}")
               println("Do you like this activity? [y/n]")
@@ -98,8 +154,7 @@ class BoredCommand extends IOApp {
               if (answer.equalsIgnoreCase("y")) {
                 val activity = parsedJson("activity").str
                 val activityID = parsedJson("key").str.toLong
-                //boredSql.add(Activity(activity), ActivityID(activityID))
-                println("Activity saved in favorites")
+                insertActivity(Activity(activity), ActivityID(activityID), boredSql)
               } else {
                 println("Ok, let's try again")
               }
@@ -119,7 +174,7 @@ class BoredCommand extends IOApp {
     minAccessibility: String,
     maxAccessibility: String
   ): Uri = {
-    val baseUri = uri"http://www.boredapi.com/api/activity"
+    val baseUri = uri"https://www.boredapi.com/api/activity"
     val queryParams = List(
       "key" -> key,
       "type" -> activityType,
@@ -139,7 +194,7 @@ class BoredCommand extends IOApp {
       IO.pure(scala.io.StdIn.readLine().trim)
   }
 
-  def help(): IO[Unit] = {
+  private def help(): IO[Unit] = {
     IO.pure(println("Instructions for data entry:")) *>
       IO.pure(println("- Unique numeric id - number from 1000000 to 9999999")) *>
       IO.pure(
@@ -158,15 +213,15 @@ class BoredCommand extends IOApp {
           "- Minimum/maximum accessibility - number from 0 to 1 (factor describing how possible an event is to do with zero being the most accessible)"
         )
       )
+    IO.pure(println("\nDisclaimer:")) *>
+      IO.pure(
+        println(
+          "Even if the parameters are entered correctly in form, this does not guarantee the existence of the corresponding activity"
+        )
+      )
   }
 }
 
 object BoredCommandApp extends IOApp {
-  override def run(args: List[String]): IO[ExitCode] = {
-    if (args.contains("--help")) {
-      new BoredCommand().help().as(ExitCode.Success)
-    } else {
-      new BoredCommand().run(args)
-    }
-  }
+  override def run(args: List[String]): IO[ExitCode] = new BoredCommand().run(args)
 }
